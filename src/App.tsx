@@ -1,10 +1,9 @@
 import { useState, useEffect } from 'react';
 
-// --- CONFIGURAÇÃO CALL ME BOT ---
-// Substitui pelos teus dados reais antes do push
+// --- CONFIGURAÇÃO VIA VARIÁVEIS DE AMBIENTE ---
 const WHATSAPP_PHONE = import.meta.env.VITE_WHATSAPP_PHONE;
-const WHATSAPP_API_KEY = import.meta.env.VITE_WHATSAPP_API_KEY;     
-// --------------------------------
+const WHATSAPP_API_KEY = import.meta.env.VITE_WHATSAPP_API_KEY;
+// ----------------------------------------------
 
 export default function App() {
   const [cor, setCor] = useState('VERDE');
@@ -18,7 +17,7 @@ export default function App() {
       const texto = encodeURIComponent(`🚨 *Monitor Ponte Móvel*:\n${novaMensagem}`);
       const url = `https://api.callmebot.com/whatsapp.php?phone=${WHATSAPP_PHONE}&text=${texto}&apikey=${WHATSAPP_API_KEY}`;
       
-      // Chamada silenciosa (no-cors para evitar erros de bloqueio do bot)
+      // Chamada silenciosa (no-cors para evitar bloqueios de segurança do navegador)
       await fetch(url, { mode: 'no-cors' }); 
       console.log('Notificação enviada!');
     } catch (e) {
@@ -26,10 +25,11 @@ export default function App() {
     }
   };
 
-  // Consulta o estado da ponte
+  // Consulta o estado da ponte com lógica anti-cache
   const verificarPonte = async () => {
     try {
-      const response = await fetch('/api-apdl');
+      // Adicionamos um carimbo temporal para forçar a leitura de dados frescos
+      const response = await fetch('/api-apdl?t=' + Date.now());
       if (!response.ok) throw new Error();
       
       const textoHTML = await response.text();
@@ -38,15 +38,17 @@ export default function App() {
       let novaCor = 'VERDE';
       let novaMensagem = 'PONTE FECHADA - TRÂNSITO LIVRE';
 
-      if (htmlNormalizado.includes('ABERTA') || htmlNormalizado.includes('MOVIMENTO')) {
+      // Deteção robusta: usamos termos curtos para evitar erros com acentos (ex: PREPARAÇÃO)
+      if (htmlNormalizado.includes('ABERTA') || htmlNormalizado.includes('MOVIMENTO') || htmlNormalizado.includes('MANOBRA')) {
         novaCor = 'VERMELHO';
         novaMensagem = 'PONTE ABERTA - TRÂNSITO PROIBIDO';
-      } else if (htmlNormalizado.includes('PREPARAÇÃO') || htmlNormalizado.includes('AGUARDA')) {
+      } 
+      else if (htmlNormalizado.includes('PREPARA') || htmlNormalizado.includes('AGUARDA') || htmlNormalizado.includes('CONDICIONADO')) {
         novaCor = 'AMARELO';
         novaMensagem = 'PONTE EM PREPARAÇÃO - TRÂNSITO CONDICIONADO';
       }
 
-      // Notifica apenas se houver mudança de estado real
+      // Dispara o WhatsApp apenas se houver mudança de estado
       if (novaCor !== corAnterior && corAnterior !== null) {
         enviarNotificacao(novaMensagem);
       }
@@ -73,10 +75,7 @@ export default function App() {
   }, [corAnterior]);
 
   const formatadorData = new Intl.DateTimeFormat('pt-PT', { 
-    weekday: 'long', 
-    day: 'numeric', 
-    month: 'long', 
-    year: 'numeric' 
+    weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' 
   });
 
   return (
@@ -94,7 +93,7 @@ export default function App() {
         </div>
       </div>
       
-      {/* Semáforo Responsivo (Escala baseada em vh) */}
+      {/* Semáforo Responsivo (Escala baseada na altura do ecrã) */}
       <div className="h-[52vh] aspect-[1/2.4] bg-zinc-900 p-[3vh] rounded-[8vh] shadow-2xl border-[0.6vh] border-zinc-800 flex flex-col justify-between ring-1 ring-white/5">
         <div className={`aspect-square w-full rounded-full transition-all duration-700 ${
           cor === 'VERMELHO' ? 'bg-red-600 shadow-[0_0_6vh_rgba(220,38,38,0.9)] scale-105' : 'bg-red-950/20'

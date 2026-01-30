@@ -4,12 +4,12 @@ const WHATSAPP_PHONE = import.meta.env.VITE_WHATSAPP_PHONE;
 const WHATSAPP_API_KEY = import.meta.env.VITE_WHATSAPP_API_KEY;
 
 export default function App() {
-  const [cor, setCor] = useState('VERDE');
+  // Alterado: Começamos sem cor ('OFF') para não dar informação falsa
+  const [cor, setCor] = useState('OFF');
   const [mensagem, setMensagem] = useState('A ligar ao sistema...');
   const [tempoReal, setTempoReal] = useState(new Date());
   
-  // Usamos Ref para que o intervalo veja sempre o valor real e atualizado
-  const corRef = useRef('VERDE');
+  const corRef = useRef('OFF');
   const inicializadoRef = useRef(false);
 
   const enviarNotificacao = async (novaMensagem: string) => {
@@ -24,7 +24,6 @@ export default function App() {
 
   const verificarPonte = async () => {
     try {
-      // O "?t=" impede que o browser guarde a resposta antiga em cache
       const response = await fetch('/api-apdl?t=' + Date.now(), { cache: 'no-store' });
       if (!response.ok) throw new Error();
       
@@ -34,7 +33,6 @@ export default function App() {
       let novaCor = 'VERDE';
       let novaMensagem = 'PONTE FECHADA - TRÂNSITO LIVRE';
 
-      // Lógica de deteção baseada no que o SIGA APDL costuma mostrar
       if (
         htmlNormalizado.includes('ABERTA') || 
         htmlNormalizado.includes('MOVIMENTO') || 
@@ -54,34 +52,32 @@ export default function App() {
         novaMensagem = 'PONTE EM PREPARAÇÃO - TRÂNSITO CONDICIONADO';
       }
 
-      // Só envia notificação se a cor MUDAR
-      if (inicializadoRef.current && novaCor !== corRef.current) {
+      // Só enviamos WhatsApp se já tivermos uma cor anterior (não na primeira carga)
+      if (inicializadoRef.current && corRef.current !== 'OFF' && novaCor !== corRef.current) {
         enviarNotificacao(novaMensagem);
       }
 
-      // Atualizamos o estado visual e a referência de memória
       setCor(novaCor);
       setMensagem(novaMensagem);
       corRef.current = novaCor;
       inicializadoRef.current = true;
 
     } catch (error) {
-      console.error('Falha na consulta');
+      setMensagem('ERRO DE LIGAÇÃO');
+      setCor('OFF'); // Apaga o semáforo em caso de erro
     }
   };
 
-  // 1. Relógio (corre a cada segundo)
   useEffect(() => {
     const timer = setInterval(() => setTempoReal(new Date()), 1000);
     return () => clearInterval(timer);
   }, []);
 
-  // 2. Consulta API (corre a cada 5 segundos fixos)
   useEffect(() => {
-    verificarPonte(); // Primeira execução imediata
+    verificarPonte();
     const apiTimer = setInterval(verificarPonte, 5000);
     return () => clearInterval(apiTimer);
-  }, []); // Array vazio para garantir que o intervalo nunca morre
+  }, []);
 
   const formatadorData = new Intl.DateTimeFormat('pt-PT', { 
     weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' 
@@ -101,6 +97,7 @@ export default function App() {
         </div>
       </div>
       
+      {/* Semáforo: Se a cor for 'OFF', todas as luzes ficam apagadas */}
       <div className="h-[52vh] aspect-[1/2.4] bg-zinc-900 p-[3vh] rounded-[8vh] shadow-2xl border-[0.6vh] border-zinc-800 flex flex-col justify-between ring-1 ring-white/5">
         <div className={`aspect-square w-full rounded-full transition-all duration-700 ${
           cor === 'VERMELHO' ? 'bg-red-600 shadow-[0_0_6vh_rgba(220,38,38,0.9)] scale-105' : 'bg-red-950/20'

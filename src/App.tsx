@@ -1,14 +1,16 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 
 const WHATSAPP_PHONE = import.meta.env.VITE_WHATSAPP_PHONE;
 const WHATSAPP_API_KEY = import.meta.env.VITE_WHATSAPP_API_KEY;
 
 export default function App() {
   const [cor, setCor] = useState('VERDE');
-  const [corAnterior, setCorAnterior] = useState<string | null>(null);
   const [mensagem, setMensagem] = useState('A ligar ao sistema...');
   const [tempoReal, setTempoReal] = useState(new Date());
-  const [debugText, setDebugText] = useState(''); // Para sabermos o que o site diz
+  
+  // Usamos Ref para que o intervalo veja sempre o valor real e atualizado
+  const corRef = useRef('VERDE');
+  const inicializadoRef = useRef(false);
 
   const enviarNotificacao = async (novaMensagem: string) => {
     try {
@@ -22,26 +24,23 @@ export default function App() {
 
   const verificarPonte = async () => {
     try {
-      const response = await fetch('/api-apdl?t=' + Date.now());
+      // O "?t=" impede que o browser guarde a resposta antiga em cache
+      const response = await fetch('/api-apdl?t=' + Date.now(), { cache: 'no-store' });
       if (!response.ok) throw new Error();
       
       const textoHTML = await response.text();
-      // Guardamos os primeiros 100 caracteres para diagnóstico visual
-      setDebugText(textoHTML.substring(0, 150).replace(/<[^>]*>?/gm, ' '));
-      
       const htmlNormalizado = textoHTML.toUpperCase();
 
       let novaCor = 'VERDE';
       let novaMensagem = 'PONTE FECHADA - TRÂNSITO LIVRE';
 
-      // Lógica de deteção ultra-abrangente
+      // Lógica de deteção baseada no que o SIGA APDL costuma mostrar
       if (
         htmlNormalizado.includes('ABERTA') || 
         htmlNormalizado.includes('MOVIMENTO') || 
         htmlNormalizado.includes('MANOBRA') || 
-        htmlNormalizado.includes('PROIBIDO') ||
-        htmlNormalizado.includes('INTERROMPIDO') ||
-        htmlNormalizado.includes('FECHADA AO TR')
+        htmlNormalizado.includes('FECHADA AO') ||
+        htmlNormalizado.includes('PROIBIDO')
       ) {
         novaCor = 'VERMELHO';
         novaMensagem = 'PONTE ABERTA - TRÂNSITO PROIBIDO';
@@ -49,34 +48,40 @@ export default function App() {
       else if (
         htmlNormalizado.includes('PREPARA') || 
         htmlNormalizado.includes('AGUARDA') || 
-        htmlNormalizado.includes('CONDICIONADO')
+        htmlNormalizado.includes('AVISO')
       ) {
         novaCor = 'AMARELO';
         novaMensagem = 'PONTE EM PREPARAÇÃO - TRÂNSITO CONDICIONADO';
       }
 
-      if (novaCor !== corAnterior && corAnterior !== null) {
+      // Só envia notificação se a cor MUDAR
+      if (inicializadoRef.current && novaCor !== corRef.current) {
         enviarNotificacao(novaMensagem);
       }
 
+      // Atualizamos o estado visual e a referência de memória
       setCor(novaCor);
-      setCorAnterior(novaCor);
       setMensagem(novaMensagem);
+      corRef.current = novaCor;
+      inicializadoRef.current = true;
+
     } catch (error) {
-      setMensagem('ERRO DE LIGAÇÃO');
+      console.error('Falha na consulta');
     }
   };
 
+  // 1. Relógio (corre a cada segundo)
   useEffect(() => {
     const timer = setInterval(() => setTempoReal(new Date()), 1000);
     return () => clearInterval(timer);
   }, []);
 
+  // 2. Consulta API (corre a cada 5 segundos fixos)
   useEffect(() => {
-    verificarPonte();
+    verificarPonte(); // Primeira execução imediata
     const apiTimer = setInterval(verificarPonte, 5000);
     return () => clearInterval(apiTimer);
-  }, [corAnterior]);
+  }, []); // Array vazio para garantir que o intervalo nunca morre
 
   const formatadorData = new Intl.DateTimeFormat('pt-PT', { 
     weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' 
@@ -115,11 +120,6 @@ export default function App() {
         <span className="text-zinc-600 text-[1.2vh] uppercase font-bold tracking-[0.2em] opacity-80">
           {formatadorData.format(tempoReal)}
         </span>
-        
-        {/* TEXTO DE DIAGNÓSTICO (Remove isto quando estiver a funcionar) */}
-        <div className="mt-4 text-[8px] text-zinc-800 font-mono break-all max-w-[200px]">
-          RAW: {debugText}
-        </div>
       </div>
 
     </div>

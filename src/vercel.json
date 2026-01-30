@@ -1,0 +1,8 @@
+{
+  "rewrites": [
+    {
+      "source": "/api-apdl",
+      "destination": "https://siga.apdl.pt/AberturaPonteMovel/"
+    }
+  ]
+}

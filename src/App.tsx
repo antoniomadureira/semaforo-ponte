@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 
 // --- CONFIGURAÇÃO CALL ME BOT ---
 // Substitui pelos teus dados reais antes do push
-const WHATSAPP_PHONE = '3519XXXXXXXXX'; 
+const WHATSAPP_PHONE = '351936780898'; 
 const WHATSAPP_API_KEY = '3449013';       
 // --------------------------------
 

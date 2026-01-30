@@ -1,54 +1,60 @@
 import { useState, useEffect } from 'react';
 
-// --- CONFIGURAÇÃO VIA VARIÁVEIS DE AMBIENTE ---
 const WHATSAPP_PHONE = import.meta.env.VITE_WHATSAPP_PHONE;
 const WHATSAPP_API_KEY = import.meta.env.VITE_WHATSAPP_API_KEY;
-// ----------------------------------------------
 
 export default function App() {
   const [cor, setCor] = useState('VERDE');
   const [corAnterior, setCorAnterior] = useState<string | null>(null);
   const [mensagem, setMensagem] = useState('A ligar ao sistema...');
   const [tempoReal, setTempoReal] = useState(new Date());
+  const [debugText, setDebugText] = useState(''); // Para sabermos o que o site diz
 
-  // Função para enviar notificação via WhatsApp
   const enviarNotificacao = async (novaMensagem: string) => {
     try {
       const texto = encodeURIComponent(`🚨 *Monitor Ponte Móvel*:\n${novaMensagem}`);
       const url = `https://api.callmebot.com/whatsapp.php?phone=${WHATSAPP_PHONE}&text=${texto}&apikey=${WHATSAPP_API_KEY}`;
-      
-      // Chamada silenciosa (no-cors para evitar bloqueios de segurança do navegador)
       await fetch(url, { mode: 'no-cors' }); 
-      console.log('Notificação enviada!');
     } catch (e) {
-      console.error('Erro ao enviar WhatsApp');
+      console.error('Erro WhatsApp');
     }
   };
 
-  // Consulta o estado da ponte com lógica anti-cache
   const verificarPonte = async () => {
     try {
-      // Adicionamos um carimbo temporal para forçar a leitura de dados frescos
       const response = await fetch('/api-apdl?t=' + Date.now());
       if (!response.ok) throw new Error();
       
       const textoHTML = await response.text();
+      // Guardamos os primeiros 100 caracteres para diagnóstico visual
+      setDebugText(textoHTML.substring(0, 150).replace(/<[^>]*>?/gm, ' '));
+      
       const htmlNormalizado = textoHTML.toUpperCase();
 
       let novaCor = 'VERDE';
       let novaMensagem = 'PONTE FECHADA - TRÂNSITO LIVRE';
 
-      // Deteção robusta: usamos termos curtos para evitar erros com acentos (ex: PREPARAÇÃO)
-      if (htmlNormalizado.includes('ABERTA') || htmlNormalizado.includes('MOVIMENTO') || htmlNormalizado.includes('MANOBRA')) {
+      // Lógica de deteção ultra-abrangente
+      if (
+        htmlNormalizado.includes('ABERTA') || 
+        htmlNormalizado.includes('MOVIMENTO') || 
+        htmlNormalizado.includes('MANOBRA') || 
+        htmlNormalizado.includes('PROIBIDO') ||
+        htmlNormalizado.includes('INTERROMPIDO') ||
+        htmlNormalizado.includes('FECHADA AO TR')
+      ) {
         novaCor = 'VERMELHO';
         novaMensagem = 'PONTE ABERTA - TRÂNSITO PROIBIDO';
       } 
-      else if (htmlNormalizado.includes('PREPARA') || htmlNormalizado.includes('AGUARDA') || htmlNormalizado.includes('CONDICIONADO')) {
+      else if (
+        htmlNormalizado.includes('PREPARA') || 
+        htmlNormalizado.includes('AGUARDA') || 
+        htmlNormalizado.includes('CONDICIONADO')
+      ) {
         novaCor = 'AMARELO';
         novaMensagem = 'PONTE EM PREPARAÇÃO - TRÂNSITO CONDICIONADO';
       }
 
-      // Dispara o WhatsApp apenas se houver mudança de estado
       if (novaCor !== corAnterior && corAnterior !== null) {
         enviarNotificacao(novaMensagem);
       }
@@ -57,17 +63,15 @@ export default function App() {
       setCorAnterior(novaCor);
       setMensagem(novaMensagem);
     } catch (error) {
-      console.error('Erro na atualização de dados');
+      setMensagem('ERRO DE LIGAÇÃO');
     }
   };
 
-  // Relógio em tempo real (1 segundo)
   useEffect(() => {
     const timer = setInterval(() => setTempoReal(new Date()), 1000);
     return () => clearInterval(timer);
   }, []);
 
-  // Consulta API (5 segundos)
   useEffect(() => {
     verificarPonte();
     const apiTimer = setInterval(verificarPonte, 5000);
@@ -81,7 +85,6 @@ export default function App() {
   return (
     <div className="flex flex-col items-center justify-between h-[100svh] bg-slate-950 py-[5vh] font-sans px-4 text-center overflow-hidden">
       
-      {/* Título e Status */}
       <div className="flex flex-col items-center gap-[1.5vh]">
         <h1 className="text-white text-[5vh] font-black tracking-widest uppercase opacity-20 leading-none">
           Ponte Móvel
@@ -93,7 +96,6 @@ export default function App() {
         </div>
       </div>
       
-      {/* Semáforo Responsivo (Escala baseada na altura do ecrã) */}
       <div className="h-[52vh] aspect-[1/2.4] bg-zinc-900 p-[3vh] rounded-[8vh] shadow-2xl border-[0.6vh] border-zinc-800 flex flex-col justify-between ring-1 ring-white/5">
         <div className={`aspect-square w-full rounded-full transition-all duration-700 ${
           cor === 'VERMELHO' ? 'bg-red-600 shadow-[0_0_6vh_rgba(220,38,38,0.9)] scale-105' : 'bg-red-950/20'
@@ -106,7 +108,6 @@ export default function App() {
         }`} />
       </div>
 
-      {/* Relógio e Data Inferior */}
       <div className="flex flex-col items-center gap-[0.5vh] mb-[2vh]">
         <span className="text-white text-[4.5vh] font-mono font-light tracking-widest leading-none">
           {tempoReal.toLocaleTimeString('pt-PT')}
@@ -114,6 +115,11 @@ export default function App() {
         <span className="text-zinc-600 text-[1.2vh] uppercase font-bold tracking-[0.2em] opacity-80">
           {formatadorData.format(tempoReal)}
         </span>
+        
+        {/* TEXTO DE DIAGNÓSTICO (Remove isto quando estiver a funcionar) */}
+        <div className="mt-4 text-[8px] text-zinc-800 font-mono break-all max-w-[200px]">
+          RAW: {debugText}
+        </div>
       </div>
 
     </div>

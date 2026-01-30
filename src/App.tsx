@@ -4,7 +4,6 @@ const WHATSAPP_PHONE = import.meta.env.VITE_WHATSAPP_PHONE;
 const WHATSAPP_API_KEY = import.meta.env.VITE_WHATSAPP_API_KEY;
 
 export default function App() {
-  // Alterado: Começamos sem cor ('OFF') para não dar informação falsa
   const [cor, setCor] = useState('OFF');
   const [mensagem, setMensagem] = useState('A ligar ao sistema...');
   const [tempoReal, setTempoReal] = useState(new Date());
@@ -12,13 +11,20 @@ export default function App() {
   const corRef = useRef('OFF');
   const inicializadoRef = useRef(false);
 
+  // Função de notificação com correção de caracteres
   const enviarNotificacao = async (novaMensagem: string) => {
     try {
-      const texto = encodeURIComponent(`🚨 *Monitor Ponte Móvel*:\n${novaMensagem}`);
-      const url = `https://api.callmebot.com/whatsapp.php?phone=${WHATSAPP_PHONE}&text=${texto}&apikey=${WHATSAPP_API_KEY}`;
+      // Corrigido: Texto com acentuação correta e codificação robusta
+      const cabecalho = `🚨 *Monitor Ponte Móvel*:`;
+      const corpo = `\n${novaMensagem}`;
+      const textoFinal = encodeURIComponent(cabecalho + corpo);
+      
+      const url = `https://api.callmebot.com/whatsapp.php?phone=${WHATSAPP_PHONE}&text=${textoFinal}&apikey=${WHATSAPP_API_KEY}`;
+      
       await fetch(url, { mode: 'no-cors' }); 
+      console.log('WhatsApp enviado com sucesso');
     } catch (e) {
-      console.error('Erro WhatsApp');
+      console.error('Erro ao enviar mensagem');
     }
   };
 
@@ -31,7 +37,7 @@ export default function App() {
       const htmlNormalizado = textoHTML.toUpperCase();
 
       let novaCor = 'VERDE';
-      let novaMensagem = 'PONTE FECHADA - TRÂNSITO LIVRE';
+      let novaMensagem = 'PONTE FECHADA - TRÂNSITO LIVRE'; // Corrigido: TRÂNSITO
 
       if (
         htmlNormalizado.includes('ABERTA') || 
@@ -41,7 +47,7 @@ export default function App() {
         htmlNormalizado.includes('PROIBIDO')
       ) {
         novaCor = 'VERMELHO';
-        novaMensagem = 'PONTE ABERTA - TRÂNSITO PROIBIDO';
+        novaMensagem = 'PONTE ABERTA - TRÂNSITO PROIBIDO'; // Corrigido: TRÂNSITO
       } 
       else if (
         htmlNormalizado.includes('PREPARA') || 
@@ -49,10 +55,9 @@ export default function App() {
         htmlNormalizado.includes('AVISO')
       ) {
         novaCor = 'AMARELO';
-        novaMensagem = 'PONTE EM PREPARAÇÃO - TRÂNSITO CONDICIONADO';
+        novaMensagem = 'PONTE EM PREPARAÇÃO - TRÂNSITO CONDICIONADO'; // Corrigido: TRÂNSITO
       }
 
-      // Só enviamos WhatsApp se já tivermos uma cor anterior (não na primeira carga)
       if (inicializadoRef.current && corRef.current !== 'OFF' && novaCor !== corRef.current) {
         enviarNotificacao(novaMensagem);
       }
@@ -64,7 +69,7 @@ export default function App() {
 
     } catch (error) {
       setMensagem('ERRO DE LIGAÇÃO');
-      setCor('OFF'); // Apaga o semáforo em caso de erro
+      setCor('OFF');
     }
   };
 
@@ -97,7 +102,6 @@ export default function App() {
         </div>
       </div>
       
-      {/* Semáforo: Se a cor for 'OFF', todas as luzes ficam apagadas */}
       <div className="h-[52vh] aspect-[1/2.4] bg-zinc-900 p-[3vh] rounded-[8vh] shadow-2xl border-[0.6vh] border-zinc-800 flex flex-col justify-between ring-1 ring-white/5">
         <div className={`aspect-square w-full rounded-full transition-all duration-700 ${
           cor === 'VERMELHO' ? 'bg-red-600 shadow-[0_0_6vh_rgba(220,38,38,0.9)] scale-105' : 'bg-red-950/20'

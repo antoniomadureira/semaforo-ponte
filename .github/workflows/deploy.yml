@@ -16,19 +16,27 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+      
       - name: Set up Node
         uses: actions/setup-node@v4
         with:
           node-version: 20
           cache: 'npm'
+          
       - name: Install dependencies
         run: npm install
+      
       - name: Build
+        # Aqui injetamos os segredos como variáveis de ambiente para o Vite
         run: npm run build
+        env:
+          VITE_WHATSAPP_PHONE: ${{ secrets.VITE_WHATSAPP_PHONE }}
+          VITE_WHATSAPP_API_KEY: ${{ secrets.VITE_WHATSAPP_API_KEY }}
+          
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
         with:
-          path: ./dist # Pasta onde o Vite gera os ficheiros finais
+          path: ./dist
 
   deploy:
     environment:

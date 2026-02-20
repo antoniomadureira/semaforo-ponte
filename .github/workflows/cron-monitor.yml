@@ -1,0 +1,24 @@
+name: Monitorização Automática 24/7
+
+on:
+  schedule:
+    # O GitHub executa no mínimo de 5 em 5 minutos por segurança
+    - cron: '*/5 * * * *' 
+  workflow_dispatch: # Permite-lhe correr o teste manualmente no separador Actions
+
+jobs:
+  check-bridge:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Configurar Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          
+      - name: Executar Verificação
+        env:
+          VITE_WHATSAPP_PHONE: ${{ secrets.VITE_WHATSAPP_PHONE }}
+          VITE_WHATSAPP_API_KEY: ${{ secrets.VITE_WHATSAPP_API_KEY }}
+        run: node monitor_ponte.js

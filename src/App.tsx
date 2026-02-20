@@ -12,6 +12,7 @@ interface LogEntrada {
 
 export default function App() {
   const [cor, setCor] = useState('OFF');
+  const [mensagem, setMensagem] = useState('A ATUALIZAR...');
   const [tempoReal, setTempoReal] = useState(new Date());
   const [abaAtiva, setAbaAtiva] = useState<'monitor' | 'historico'>('monitor');
   const [logs, setLogs] = useState<LogEntrada[]>([]);
@@ -51,7 +52,6 @@ export default function App() {
       try {
         const controller = new AbortController();
         const timeoutId = setTimeout(() => controller.abort(), 10000);
-
         const response = await fetch(PROXIES[i](urlAlvo), { signal: controller.signal });
         clearTimeout(timeoutId);
 
@@ -77,20 +77,22 @@ export default function App() {
     const htmlNormalizado = html.toUpperCase();
     let novaCor = 'VERDE';
     let labelEstado = 'FECHADA';
+    let msgCompleta = 'PONTE FECHADA - TRÂNSITO LIVRE';
 
     if (htmlNormalizado.includes('ABERTA') || htmlNormalizado.includes('MOVIMENTO') || 
         htmlNormalizado.includes('MANOBRA') || htmlNormalizado.includes('FECHADA AO') ||
         htmlNormalizado.includes('PROIBIDO')) {
       novaCor = 'VERMELHO';
       labelEstado = 'ABERTA';
+      msgCompleta = 'PONTE ABERTA - TRÂNSITO PROIBIDO';
     } 
     else if (htmlNormalizado.includes('PREPARA') || htmlNormalizado.includes('AGUARDA') || 
              htmlNormalizado.includes('AVISO')) {
       novaCor = 'AMARELO';
       labelEstado = 'PREPARAÇÃO';
+      msgCompleta = 'PONTE EM PREPARAÇÃO';
     }
 
-    // Registo de alteração de estado
     if (corRef.current !== 'OFF' && novaCor !== corRef.current) {
       const agora = new Date();
       const novoLog = {
@@ -99,10 +101,11 @@ export default function App() {
         hora: agora.toLocaleTimeString('pt-PT')
       };
       setLogs(prev => [novoLog, ...prev]);
-      enviarNotificacao(labelEstado === 'FECHADA' ? 'PONTE FECHADA - TRÂNSITO LIVRE' : `PONTE ${labelEstado}`);
+      enviarNotificacao(msgCompleta);
     }
 
     setCor(novaCor);
+    setMensagem(msgCompleta);
     corRef.current = novaCor;
     inicializadoRef.current = true;
   };
@@ -114,7 +117,7 @@ export default function App() {
 
   useEffect(() => {
     verificarPonte();
-    const apiTimer = setInterval(verificarPonte, 15000); // Atualização rigorosa de 15 em 15 segundos
+    const apiTimer = setInterval(verificarPonte, 15000);
     return () => clearInterval(apiTimer);
   }, []);
 
@@ -129,103 +132,89 @@ export default function App() {
     link.click();
   };
 
-  const logsFiltrados = filtro === 'TODOS' ? logs : logs.filter(l => l.estado === filtro);
-
   return (
-    <div className="flex flex-col items-center min-h-screen bg-slate-950 font-sans text-center text-white overflow-x-hidden">
+    <div className="flex flex-col items-center justify-between h-[100svh] bg-slate-950 font-sans text-center text-white overflow-hidden py-[4vh]">
       
-      {/* Navegação */}
-      <nav className="flex gap-4 mt-8 mb-4">
-        <button 
-          onClick={() => setAbaAtiva('monitor')}
-          className={`px-6 py-2 rounded-full text-xs font-bold uppercase tracking-widest transition-all ${abaAtiva === 'monitor' ? 'bg-white text-black' : 'bg-zinc-900 text-zinc-500'}`}
-        >
-          Monitor
-        </button>
-        <button 
-          onClick={() => setAbaAtiva('historico')}
-          className={`px-6 py-2 rounded-full text-xs font-bold uppercase tracking-widest transition-all ${abaAtiva === 'historico' ? 'bg-white text-black' : 'bg-zinc-900 text-zinc-500'}`}
-        >
-          Histórico ({logs.length})
-        </button>
-      </nav>
+      {/* Topo: Título e Mensagem de Estado Reposta */}
+      <div className="flex flex-col items-center gap-[1.5vh]">
+        <h1 className="text-white text-[5vh] font-black tracking-widest uppercase opacity-20 leading-none">
+          Ponte Móvel
+        </h1>
+        <div className="py-[0.8vh] px-[2vh] bg-zinc-900/50 rounded-full border border-zinc-800 min-w-[200px]">
+          <span className={`text-[1.3vh] font-mono uppercase tracking-tighter ${cor === 'OFF' ? 'text-orange-400 animate-pulse' : 'text-zinc-400'}`}>
+            {cor === 'OFF' ? 'A ATUALIZAR...' : mensagem}
+          </span>
+        </div>
+      </div>
 
       {abaAtiva === 'monitor' ? (
-        <div className="flex flex-col items-center justify-between flex-grow py-8 h-[80vh]">
-          <h1 className="text-[5vh] font-black tracking-widest uppercase opacity-20 leading-none">
-            Ponte Móvel
-          </h1>
-          
-          <div className="h-[52vh] aspect-[1/2.4] bg-zinc-900 p-[3vh] rounded-[8vh] shadow-2xl border-[0.6vh] border-zinc-800 flex flex-col justify-between ring-1 ring-white/5">
+        <>
+          {/* Centro: Semáforo */}
+          <div className="h-[50vh] aspect-[1/2.4] bg-zinc-900 p-[3vh] rounded-[8vh] shadow-2xl border-[0.6vh] border-zinc-800 flex flex-col justify-between ring-1 ring-white/5 relative">
             <div className={`aspect-square w-full rounded-full transition-all duration-700 ${cor === 'VERMELHO' ? 'bg-red-600 shadow-[0_0_6vh_rgba(220,38,38,0.9)] scale-105' : 'bg-red-950/20'}`} />
             <div className={`aspect-square w-full rounded-full transition-all duration-700 ${cor === 'AMARELO' ? 'bg-yellow-500 shadow-[0_0_6vh_rgba(234,179,8,0.9)] scale-105' : 'bg-yellow-950/20'}`} />
             <div className={`aspect-square w-full rounded-full transition-all duration-700 ${cor === 'VERDE' ? 'bg-emerald-500 shadow-[0_0_6vh_rgba(16,185,129,0.9)] scale-105' : 'bg-emerald-950/20'}`} />
           </div>
 
-          <div className="flex flex-col items-center gap-2 mb-8">
-            <span className="text-[4.5vh] font-mono font-light tracking-widest leading-none">
+          {/* Rodapé: Relógio e Data */}
+          <div className="flex flex-col items-center gap-1">
+            <span className="text-[4vh] font-mono font-light tracking-widest leading-none">
               {tempoReal.toLocaleTimeString('pt-PT')}
             </span>
-            <span className="text-zinc-600 text-[1.2vh] uppercase font-bold tracking-[0.2em] opacity-80">
+            <span className="text-zinc-600 text-[1.1vh] uppercase font-bold tracking-[0.2em] opacity-80">
               {new Intl.DateTimeFormat('pt-PT', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' }).format(tempoReal)}
             </span>
           </div>
-        </div>
+        </>
       ) : (
-        <div className="w-full max-w-2xl px-4 py-8">
-          <div className="flex justify-between items-center mb-6">
+        /* Histórico Tabela */
+        <div className="w-full max-w-2xl px-4 flex-grow overflow-y-auto mt-4 mb-20">
+          <div className="flex justify-between items-center mb-4">
             <select 
               value={filtro}
               onChange={(e) => setFiltro(e.target.value)}
-              className="bg-zinc-900 border border-zinc-800 text-white text-xs p-2 rounded"
+              className="bg-zinc-900 border border-zinc-800 text-[10px] p-2 rounded text-zinc-400"
             >
-              <option value="TODOS">Todos os Estados</option>
-              <option value="ABERTA">Aberta</option>
-              <option value="FECHADA">Fechada</option>
-              <option value="PREPARAÇÃO">Preparação</option>
+              <option value="TODOS">TODOS</option>
+              <option value="ABERTA">ABERTA</option>
+              <option value="FECHADA">FECHADA</option>
+              <option value="PREPARAÇÃO">PREPARAÇÃO</option>
             </select>
-            <button 
-              onClick={downloadCSV}
-              className="bg-emerald-600 hover:bg-emerald-500 text-white text-[10px] font-bold py-2 px-4 rounded uppercase"
-            >
-              Download CSV
+            <button onClick={downloadCSV} className="bg-emerald-600/20 text-emerald-400 border border-emerald-900/50 text-[9px] font-bold py-1.5 px-3 rounded uppercase">
+              CSV
             </button>
           </div>
-
           <div className="bg-zinc-900 rounded-xl border border-zinc-800 overflow-hidden">
-            <table className="w-full text-left text-xs">
-              <thead className="bg-zinc-800 text-zinc-400 uppercase font-bold">
-                <tr>
-                  <th className="p-4">Estado</th>
-                  <th className="p-4">Data</th>
-                  <th className="p-4">Hora</th>
-                </tr>
+            <table className="w-full text-left text-[11px]">
+              <thead className="bg-zinc-800/50 text-zinc-500 uppercase font-bold text-[9px]">
+                <tr><th className="p-3">Estado</th><th className="p-3">Data</th><th className="p-3">Hora</th></tr>
               </thead>
-              <tbody className="divide-y divide-zinc-800">
-                {logsFiltrados.length > 0 ? logsFiltrados.map((log, i) => (
-                  <tr key={i} className="hover:bg-white/5 transition-colors">
-                    <td className="p-4">
-                      <span className={`px-2 py-1 rounded-full text-[10px] font-bold ${
-                        log.estado === 'ABERTA' ? 'bg-red-900/40 text-red-400' :
-                        log.estado === 'FECHADA' ? 'bg-emerald-900/40 text-emerald-400' :
-                        'bg-yellow-900/40 text-yellow-400'
-                      }`}>
-                        {log.estado}
-                      </span>
-                    </td>
-                    <td className="p-4 text-zinc-400">{log.data}</td>
-                    <td className="p-4 text-zinc-500 font-mono">{log.hora}</td>
-                  </tr>
-                )) : (
-                  <tr>
-                    <td colSpan={3} className="p-10 text-center text-zinc-600 uppercase tracking-widest">Sem registos</td>
-                  </tr>
-                )}
+              <tbody className="divide-y divide-zinc-800/50">
+                {(filtro === 'TODOS' ? logs : logs.filter(l => l.estado === filtro)).map((log, i) => (
+                  <tr key={i} className="hover:bg-white/5"><td className="p-3 font-bold">{log.estado}</td><td className="p-3 text-zinc-500">{log.data}</td><td className="p-3 text-zinc-600">{log.hora}</td></tr>
+                ))}
               </tbody>
             </table>
           </div>
         </div>
       )}
+
+      {/* Navegação Inferior (Botões Pequenos) */}
+      <nav className="flex gap-2 absolute bottom-6 z-20">
+        <button 
+          onClick={() => setAbaAtiva('monitor')}
+          className={`px-4 py-1.5 rounded-full text-[9px] font-bold uppercase tracking-widest transition-all ${abaAtiva === 'monitor' ? 'bg-white text-black' : 'bg-zinc-900 text-zinc-500 border border-zinc-800'}`}
+        >
+          Monitor
+        </button>
+        <button 
+          onClick={() => setAbaAtiva('historico')}
+          className={`px-4 py-1.5 rounded-full text-[9px] font-bold uppercase tracking-widest transition-all ${abaAtiva === 'historico' ? 'bg-white text-black' : 'bg-zinc-900 text-zinc-500 border border-zinc-800'}`}
+        >
+          Histórico
+        </button>
+      </nav>
+
     </div>
   );
 }

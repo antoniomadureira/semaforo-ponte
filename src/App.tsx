@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 
+// Variáveis de ambiente configuradas no GitHub Secrets
 const WHATSAPP_PHONE = import.meta.env.VITE_WHATSAPP_PHONE;
 const WHATSAPP_API_KEY = import.meta.env.VITE_WHATSAPP_API_KEY;
 
@@ -13,11 +14,12 @@ export default function App() {
   const inicializadoRef = useRef(false);
   const isProd = import.meta.env.PROD;
 
-  // LISTA DE PROXIES PARA REDUNDÂNCIA
+  // LISTA DE PROXIES PARA ALTA RESILIÊNCIA
+  // O CodeTabs está em primeiro lugar, mas agora com a sintaxe corrigida.
   const PROXIES = [
-    (url: string) => `https://corsproxy.io/?${encodeURIComponent(url)}`,
+    (url: string) => `https://api.codetabs.com/v1/proxy?url=${encodeURIComponent(url)}`,
     (url: string) => `https://api.allorigins.win/get?url=${encodeURIComponent(url)}`,
-    (url: string) => `https://thingproxy.freeboard.io/fetch/${url}`
+    (url: string) => `https://corsproxy.io/?${encodeURIComponent(url)}`
   ];
 
   const enviarNotificacao = async (novaMensagem: string) => {
@@ -30,24 +32,24 @@ export default function App() {
   };
 
   const verificarPonte = async () => {
+    // IMPORTANTE: O timestamp vai DENTRO do URL alvo para não quebrar o CodeTabs
     const urlAlvo = `https://siga.apdl.pt/AberturaPonteMovel/?t=${Date.now()}`;
     
-    // Se estivermos em desenvolvimento, usamos o proxy local do Vite
     if (!isProd) {
       try {
         const res = await fetch(`/api-apdl?t=${Date.now()}`);
         processarResposta(await res.text());
         return;
-      } catch (e) { console.error("Erro local"); }
+      } catch (e) { console.error("Erro no proxy local"); }
     }
 
-    // EM PRODUÇÃO: TENTA CADA PROXY ATÉ UM FUNCIONAR
+    // TENTA CADA PROXY DA LISTA ATÉ OBTER SUCESSO
     for (let i = 0; i < PROXIES.length; i++) {
       try {
-        setMensagem(`A TENTAR LIGAÇÃO (VIA ${i + 1})...`);
+        setMensagem(`A CONSULTAR (VIA ${i + 1})...`);
         
         const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 8000); // Timeout agressivo de 8s por proxy
+        const timeoutId = setTimeout(() => controller.abort(), 10000); // 10s por tentativa
 
         const response = await fetch(PROXIES[i](urlAlvo), { signal: controller.signal });
         clearTimeout(timeoutId);
@@ -55,8 +57,7 @@ export default function App() {
         if (!response.ok) continue;
 
         let textoHTML = "";
-        // AllOrigins (índice 1) devolve JSON, os outros devolvem texto
-        if (i === 1) {
+        if (i === 1) { // AllOrigins devolve JSON
           const json = await response.json();
           textoHTML = json.contents;
         } else {
@@ -65,16 +66,15 @@ export default function App() {
 
         if (textoHTML && textoHTML.length > 100) {
           processarResposta(textoHTML);
-          return; // SUCESSO! Sai do loop de proxies.
+          return; // Sucesso! Interrompe o loop de proxies.
         }
       } catch (e) {
-        console.warn(`Proxy ${i + 1} falhou, a tentar o próximo...`);
+        console.warn(`Proxy ${i + 1} falhou ou deu timeout.`);
       }
     }
 
-    // Se todos falharem:
     if (!inicializadoRef.current) {
-      setMensagem('TODOS OS ACESSOS LENTOS - A REPETIR...');
+      setMensagem('LIGAÇÃO LENTA - A REPETIR...');
       setCor('OFF');
     }
   };

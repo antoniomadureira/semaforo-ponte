@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 
+// Variáveis de ambiente para o WhatsApp
 const WHATSAPP_PHONE = import.meta.env.VITE_WHATSAPP_PHONE;
 const WHATSAPP_API_KEY = import.meta.env.VITE_WHATSAPP_API_KEY;
 
@@ -11,14 +12,19 @@ export default function App() {
   const corRef = useRef('OFF');
   const inicializadoRef = useRef(false);
 
-  // Função de notificação com correção de caracteres
+  // CONFIGURAÇÃO DINÂMICA DA API (Local vs GitHub Pages)
+  const isProd = import.meta.env.PROD;
+  const API_URL = isProd 
+    ? 'https://api.allorigins.win/raw?url=' + encodeURIComponent('https://siga.apdl.pt/AberturaPonteMovel/')
+    : '/api-apdl';
+
+  // Função de notificação via WhatsApp (CallMeBot)
   const enviarNotificacao = async (novaMensagem: string) => {
+    if (!WHATSAPP_PHONE || !WHATSAPP_API_KEY) return;
     try {
-      // Corrigido: Texto com acentuação correta e codificação robusta
       const cabecalho = `🚨 *Monitor Ponte Móvel*:`;
       const corpo = `\n${novaMensagem}`;
       const textoFinal = encodeURIComponent(cabecalho + corpo);
-      
       const url = `https://api.callmebot.com/whatsapp.php?phone=${WHATSAPP_PHONE}&text=${textoFinal}&apikey=${WHATSAPP_API_KEY}`;
       
       await fetch(url, { mode: 'no-cors' }); 
@@ -30,14 +36,17 @@ export default function App() {
 
   const verificarPonte = async () => {
     try {
-      const response = await fetch('/api-apdl?t=' + Date.now(), { cache: 'no-store' });
+      // Ajuste do URL para evitar cache e erro de rotas no GitHub Pages
+      const sep = API_URL.includes('?') ? '&' : '?';
+      const response = await fetch(`${API_URL}${sep}t=${Date.now()}`, { cache: 'no-store' });
+      
       if (!response.ok) throw new Error();
       
       const textoHTML = await response.text();
       const htmlNormalizado = textoHTML.toUpperCase();
 
       let novaCor = 'VERDE';
-      let novaMensagem = 'PONTE FECHADA - TRÂNSITO LIVRE'; // Corrigido: TRÂNSITO
+      let novaMensagem = 'PONTE FECHADA - TRÂNSITO LIVRE';
 
       if (
         htmlNormalizado.includes('ABERTA') || 
@@ -47,7 +56,7 @@ export default function App() {
         htmlNormalizado.includes('PROIBIDO')
       ) {
         novaCor = 'VERMELHO';
-        novaMensagem = 'PONTE ABERTA - TRÂNSITO PROIBIDO'; // Corrigido: TRÂNSITO
+        novaMensagem = 'PONTE ABERTA - TRÂNSITO PROIBIDO';
       } 
       else if (
         htmlNormalizado.includes('PREPARA') || 
@@ -55,9 +64,10 @@ export default function App() {
         htmlNormalizado.includes('AVISO')
       ) {
         novaCor = 'AMARELO';
-        novaMensagem = 'PONTE EM PREPARAÇÃO - TRÂNSITO CONDICIONADO'; // Corrigido: TRÂNSITO
+        novaMensagem = 'PONTE EM PREPARAÇÃO - TRÂNSITO CONDICIONADO';
       }
 
+      // Lógica de notificação apenas em mudança de estado
       if (inicializadoRef.current && corRef.current !== 'OFF' && novaCor !== corRef.current) {
         enviarNotificacao(novaMensagem);
       }
@@ -73,11 +83,13 @@ export default function App() {
     }
   };
 
+  // Timer do relógio (1s)
   useEffect(() => {
     const timer = setInterval(() => setTempoReal(new Date()), 1000);
     return () => clearInterval(timer);
   }, []);
 
+  // Timer da API (5s conforme o teu ficheiro atual)
   useEffect(() => {
     verificarPonte();
     const apiTimer = setInterval(verificarPonte, 5000);
@@ -102,6 +114,7 @@ export default function App() {
         </div>
       </div>
       
+      {/* Estrutura do Semáforo */}
       <div className="h-[52vh] aspect-[1/2.4] bg-zinc-900 p-[3vh] rounded-[8vh] shadow-2xl border-[0.6vh] border-zinc-800 flex flex-col justify-between ring-1 ring-white/5">
         <div className={`aspect-square w-full rounded-full transition-all duration-700 ${
           cor === 'VERMELHO' ? 'bg-red-600 shadow-[0_0_6vh_rgba(220,38,38,0.9)] scale-105' : 'bg-red-950/20'

@@ -28,6 +28,25 @@ export default function App() {
     (url: string) => `https://corsproxy.io/?${encodeURIComponent(url)}`
   ];
 
+  // CARREGAR DADOS DO DISCO (Ao iniciar)
+  useEffect(() => {
+    const logsGuardados = localStorage.getItem('historico_ponte');
+    if (logsGuardados) {
+      try {
+        setLogs(JSON.parse(logsGuardados));
+      } catch (e) {
+        console.error("Erro ao carregar histórico");
+      }
+    }
+  }, []);
+
+  // GUARDAR DADOS NO DISCO (Sempre que os logs mudam)
+  useEffect(() => {
+    if (logs.length > 0) {
+      localStorage.setItem('historico_ponte', JSON.stringify(logs));
+    }
+  }, [logs]);
+
   const enviarNotificacao = async (novaMensagem: string) => {
     if (!WHATSAPP_PHONE || !WHATSAPP_API_KEY) return;
     try {
@@ -132,10 +151,17 @@ export default function App() {
     link.click();
   };
 
+  const limparHistorico = () => {
+    if (window.confirm("Deseja apagar todos os registos guardados?")) {
+      setLogs([]);
+      localStorage.removeItem('historico_ponte');
+    }
+  };
+
   return (
     <div className="flex flex-col items-center justify-between h-[100svh] bg-slate-950 font-sans text-center text-white overflow-hidden py-[4vh]">
       
-      {/* Topo: Título e Mensagem de Estado Reposta */}
+      {/* Topo: Título e Mensagem */}
       <div className="flex flex-col items-center gap-[1.5vh]">
         <h1 className="text-white text-[5vh] font-black tracking-widest uppercase opacity-20 leading-none">
           Ponte Móvel
@@ -149,14 +175,12 @@ export default function App() {
 
       {abaAtiva === 'monitor' ? (
         <>
-          {/* Centro: Semáforo */}
           <div className="h-[50vh] aspect-[1/2.4] bg-zinc-900 p-[3vh] rounded-[8vh] shadow-2xl border-[0.6vh] border-zinc-800 flex flex-col justify-between ring-1 ring-white/5 relative">
             <div className={`aspect-square w-full rounded-full transition-all duration-700 ${cor === 'VERMELHO' ? 'bg-red-600 shadow-[0_0_6vh_rgba(220,38,38,0.9)] scale-105' : 'bg-red-950/20'}`} />
             <div className={`aspect-square w-full rounded-full transition-all duration-700 ${cor === 'AMARELO' ? 'bg-yellow-500 shadow-[0_0_6vh_rgba(234,179,8,0.9)] scale-105' : 'bg-yellow-950/20'}`} />
             <div className={`aspect-square w-full rounded-full transition-all duration-700 ${cor === 'VERDE' ? 'bg-emerald-500 shadow-[0_0_6vh_rgba(16,185,129,0.9)] scale-105' : 'bg-emerald-950/20'}`} />
           </div>
 
-          {/* Rodapé: Relógio e Data */}
           <div className="flex flex-col items-center gap-1">
             <span className="text-[4vh] font-mono font-light tracking-widest leading-none">
               {tempoReal.toLocaleTimeString('pt-PT')}
@@ -167,22 +191,26 @@ export default function App() {
           </div>
         </>
       ) : (
-        /* Histórico Tabela */
-        <div className="w-full max-w-2xl px-4 flex-grow overflow-y-auto mt-4 mb-20">
-          <div className="flex justify-between items-center mb-4">
+        <div className="w-full max-w-2xl px-4 flex-grow overflow-y-auto mt-4 mb-20 scrollbar-hide">
+          <div className="flex justify-between items-center mb-4 gap-2">
             <select 
               value={filtro}
               onChange={(e) => setFiltro(e.target.value)}
-              className="bg-zinc-900 border border-zinc-800 text-[10px] p-2 rounded text-zinc-400"
+              className="bg-zinc-900 border border-zinc-800 text-[9px] p-2 rounded text-zinc-400 uppercase tracking-tighter"
             >
-              <option value="TODOS">TODOS</option>
+              <option value="TODOS">TODOS ({logs.length})</option>
               <option value="ABERTA">ABERTA</option>
               <option value="FECHADA">FECHADA</option>
               <option value="PREPARAÇÃO">PREPARAÇÃO</option>
             </select>
-            <button onClick={downloadCSV} className="bg-emerald-600/20 text-emerald-400 border border-emerald-900/50 text-[9px] font-bold py-1.5 px-3 rounded uppercase">
-              CSV
-            </button>
+            <div className="flex gap-2">
+               <button onClick={limparHistorico} className="bg-red-900/20 text-red-400 border border-red-900/50 text-[9px] font-bold py-1.5 px-3 rounded uppercase">
+                Limpar
+              </button>
+              <button onClick={downloadCSV} className="bg-emerald-600/20 text-emerald-400 border border-emerald-900/50 text-[9px] font-bold py-1.5 px-3 rounded uppercase">
+                CSV
+              </button>
+            </div>
           </div>
           <div className="bg-zinc-900 rounded-xl border border-zinc-800 overflow-hidden">
             <table className="w-full text-left text-[11px]">
@@ -191,7 +219,11 @@ export default function App() {
               </thead>
               <tbody className="divide-y divide-zinc-800/50">
                 {(filtro === 'TODOS' ? logs : logs.filter(l => l.estado === filtro)).map((log, i) => (
-                  <tr key={i} className="hover:bg-white/5"><td className="p-3 font-bold">{log.estado}</td><td className="p-3 text-zinc-500">{log.data}</td><td className="p-3 text-zinc-600">{log.hora}</td></tr>
+                  <tr key={i} className="hover:bg-white/5">
+                    <td className="p-3 font-bold">{log.estado}</td>
+                    <td className="p-3 text-zinc-500">{log.data}</td>
+                    <td className="p-3 text-zinc-600 font-mono">{log.hora}</td>
+                  </tr>
                 ))}
               </tbody>
             </table>
@@ -199,7 +231,7 @@ export default function App() {
         </div>
       )}
 
-      {/* Navegação Inferior (Botões Pequenos) */}
+      {/* Navegação Inferior */}
       <nav className="flex gap-2 absolute bottom-6 z-20">
         <button 
           onClick={() => setAbaAtiva('monitor')}

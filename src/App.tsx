@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useMemo } from 'react';
 
-// Variáveis de ambiente configuradas no GitHub Secrets
+// Variáveis de ambiente (GitHub Secrets)
 const WHATSAPP_PHONE = import.meta.env.VITE_WHATSAPP_PHONE;
 const WHATSAPP_API_KEY = import.meta.env.VITE_WHATSAPP_API_KEY;
 
@@ -23,14 +23,37 @@ export default function App() {
   const inicializadoRef = useRef(false);
   const isProd = import.meta.env.PROD;
 
-  // Lista de Proxies com correção de sintaxe para evitar erro 400
-  const PROXIES = [
-    (url: string) => `https://api.codetabs.com/v1/proxy?url=${encodeURIComponent(url)}`,
-    (url: string) => `https://api.allorigins.win/get?url=${encodeURIComponent(url)}`,
-    (url: string) => `https://corsproxy.io/?${encodeURIComponent(url)}`
-  ];
+  // ESTRATÉGIA DE PROXIES ATUALIZADA (Evita Erro 400 e CORS)
+  const tentarFetch = async (urlPura: string) => {
+    const urlComTime = `${urlPura}?t=${Date.now()}`;
+    
+    const configs = [
+      // 1. ThingProxy (Geralmente o mais rápido e estável para HTML)
+      { url: `https://thingproxy.freeboard.io/fetch/${urlComTime}`, type: 'text' },
+      // 2. AllOrigins RAW (Mais simples que o /get)
+      { url: `https://api.allorigins.win/raw?url=${encodeURIComponent(urlComTime)}`, type: 'text' },
+      // 3. CodeTabs (URL LIMPA para evitar Erro 400)
+      { url: `https://api.codetabs.com/v1/proxy?url=${encodeURIComponent(urlPura)}`, type: 'text' }
+    ];
 
-  // PERSISTÊNCIA: Carregar e guardar logs
+    for (const config of configs) {
+      try {
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), 5000); // 5s por proxy para ser rápido
+
+        const response = await fetch(config.url, { signal: controller.signal });
+        clearTimeout(timeout);
+
+        if (response.ok) {
+          const html = await response.text();
+          if (html && html.length > 500) return html; // Valida se recebeu a página real
+        }
+      } catch (e) { console.warn("Falha no proxy, a saltar..."); }
+    }
+    return null;
+  };
+
+  // PERSISTÊNCIA
   useEffect(() => {
     const salvos = localStorage.getItem('historico_ponte');
     if (salvos) setLogs(JSON.parse(salvos));
@@ -50,40 +73,19 @@ export default function App() {
   };
 
   const verificarPonte = async () => {
-    // IMPORTANTE: Timestamp dentro do URL para não quebrar o CodeTabs
-    const urlAlvo = `https://siga.apdl.pt/AberturaPonteMovel/?t=${Date.now()}`;
-    
+    const urlBase = 'https://siga.apdl.pt/AberturaPonteMovel/';
+    let html = "";
+
     if (!isProd) {
       try {
         const res = await fetch(`/api-apdl?t=${Date.now()}`);
-        processarResposta(await res.text());
-        return;
+        html = await res.text();
       } catch (e) { console.error("Erro local"); }
+    } else {
+      html = await tentarFetch(urlBase) || "";
     }
 
-    for (let i = 0; i < PROXIES.length; i++) {
-      try {
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 8000);
-        const response = await fetch(PROXIES[i](urlAlvo), { signal: controller.signal });
-        clearTimeout(timeoutId);
-
-        if (!response.ok) continue;
-
-        let textoHTML = "";
-        if (i === 1) { // AllOrigins via /get retorna JSON
-          const json = await response.json();
-          textoHTML = json.contents;
-        } else {
-          textoHTML = await response.text();
-        }
-
-        if (textoHTML && textoHTML.length > 100) {
-          processarResposta(textoHTML);
-          return;
-        }
-      } catch (e) { /* Falha silenciosa para o próximo proxy */ }
-    }
+    if (html) processarResposta(html);
   };
 
   const processarResposta = (html: string) => {
@@ -123,7 +125,6 @@ export default function App() {
     inicializadoRef.current = true;
   };
 
-  // ESTATÍSTICAS: Tempo Aberta Hoje (Reset à meia-noite)
   const tempoAbertoHoje = useMemo(() => {
     const hoje = new Date().toLocaleDateString('pt-PT');
     const logsHoje = [...logs].reverse().filter(l => l.data === hoje);
@@ -131,24 +132,21 @@ export default function App() {
     let inicioAbertura: number | null = null;
 
     logsHoje.forEach(log => {
-      if (log.estado === 'ABERTA' && inicioAbertura === null) {
-        inicioAbertura = log.timestamp;
-      } else if (log.estado !== 'ABERTA' && inicioAbertura !== null) {
+      if (log.estado === 'ABERTA' && inicioAbertura === null) inicioAbertura = log.timestamp;
+      else if (log.estado !== 'ABERTA' && inicioAbertura !== null) {
         totalMs += log.timestamp - inicioAbertura;
         inicioAbertura = null;
       }
     });
 
-    if (inicioAbertura !== null && cor === 'VERMELHO') {
-      totalMs += Date.now() - inicioAbertura;
-    }
+    if (inicioAbertura !== null && cor === 'VERMELHO') totalMs += Date.now() - inicioAbertura;
 
     const segs = Math.floor(totalMs / 1000);
-    const h = Math.floor(segs / 3600);
-    const m = Math.floor((segs % 3600) / 60);
-    const s = segs % 60;
-    return `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
-  }, [logs, cor]);
+    const h = Math.floor(segs / 3600).toString().padStart(2, '0');
+    const m = Math.floor((segs % 3600) / 60).toString().padStart(2, '0');
+    const s = (segs % 60).toString().padStart(2, '0');
+    return `${h}:${m}:${s}`;
+  }, [logs, cor, tempoReal.getMinutes()]); // Atualiza a cada minuto ou mudança de cor
 
   useEffect(() => {
     const timer = setInterval(() => setTempoReal(new Date()), 1000);

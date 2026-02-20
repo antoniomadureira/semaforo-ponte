@@ -1,6 +1,5 @@
 import { useState, useEffect, useRef, useMemo } from 'react';
 
-// Variáveis de ambiente para o WhatsApp (configuradas no GitHub Secrets)
 const WHATSAPP_PHONE = import.meta.env.VITE_WHATSAPP_PHONE;
 const WHATSAPP_API_KEY = import.meta.env.VITE_WHATSAPP_API_KEY;
 
@@ -23,34 +22,49 @@ export default function App() {
   const inicializadoRef = useRef(false);
   const isProd = import.meta.env.PROD;
 
-  // ESTRATÉGIA DE REDE: Fallback entre proxies estáveis
+  // CONFIGURAÇÃO DE TÍTULO E FAVICON (Resolve o problema do ícone)
+  useEffect(() => {
+    document.title = "Estado da Ponte";
+    const link: HTMLLinkElement = document.querySelector("link[rel~='icon']") || document.createElement('link');
+    link.rel = 'icon';
+    // Gera um ícone de ponte simples via SVG Data URL
+    link.href = 'data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2280%22>🌉</text></svg>';
+    document.getElementsByTagName('head')[0].appendChild(link);
+  }, []);
+
+  // ESTRATÉGIA DE REDE: Uso de JSON wrapper para evitar erros de CORS do browser
   const tentarFetch = async (urlBase: string) => {
     const urlComTime = `${urlBase}?t=${Date.now()}`;
     const configs = [
-      // 1. AllOrigins RAW (Costuma ser o mais resiliente)
-      `https://api.allorigins.win/raw?url=${encodeURIComponent(urlComTime)}`,
-      // 2. CORSProxy.io
-      `https://corsproxy.io/?${encodeURIComponent(urlComTime)}`,
-      // 3. CodeTabs (Sintaxe corrigida para evitar erro 400)
-      `https://api.codetabs.com/v1/proxy?url=${encodeURIComponent(urlBase)}`
+      // 1. AllOrigins via /get (Retorna JSON, evita erro 500 de CORS raw)
+      { url: `https://api.allorigins.win/get?url=${encodeURIComponent(urlComTime)}`, type: 'json' },
+      // 2. CORSProxy.io (Alternativa direta)
+      { url: `https://corsproxy.io/?${encodeURIComponent(urlComTime)}`, type: 'text' },
+      // 3. CodeTabs (Sintaxe ultra-limpa para evitar Erro 400)
+      { url: `https://api.codetabs.com/v1/proxy?url=${encodeURIComponent(urlBase)}`, type: 'text' }
     ];
 
-    for (const url of configs) {
+    for (const config of configs) {
       try {
         const controller = new AbortController();
-        const timeout = setTimeout(() => controller.abort(), 7000);
-        const response = await fetch(url, { signal: controller.signal });
+        const timeout = setTimeout(() => controller.abort(), 8000);
+        const response = await fetch(config.url, { signal: controller.signal });
         clearTimeout(timeout);
+
         if (response.ok) {
-          const html = await response.text();
-          if (html && html.length > 500) return html;
+          if (config.type === 'json') {
+            const data = await response.json();
+            if (data.contents && data.contents.length > 500) return data.contents;
+          } else {
+            const text = await response.text();
+            if (text && text.length > 500) return text;
+          }
         }
-      } catch (e) { console.warn("A tentar próximo proxy..."); }
+      } catch (e) { console.warn("Proxy falhou, a tentar próximo..."); }
     }
     return null;
   };
 
-  // PERSISTÊNCIA LOCAL: Carrega e guarda no browser (sem BD externa)
   useEffect(() => {
     const salvos = localStorage.getItem('historico_ponte_local');
     if (salvos) setLogs(JSON.parse(salvos));
@@ -72,7 +86,6 @@ export default function App() {
     const urlBase = 'https://siga.apdl.pt/AberturaPonteMovel/';
     let html = isProd ? await tentarFetch(urlBase) : "";
 
-    // Simulação local para desenvolvimento
     if (!isProd) {
       try {
         const res = await fetch(`/api-apdl?t=${Date.now()}`);
@@ -110,7 +123,6 @@ export default function App() {
     }
   };
 
-  // ESTATÍSTICAS: Tempo aberta hoje (Reset automático à meia-noite)
   const tempoAbertoHoje = useMemo(() => {
     const hoje = new Date().toLocaleDateString('pt-PT');
     const logsHoje = [...logs].reverse().filter(l => l.data === hoje);
@@ -147,15 +159,9 @@ export default function App() {
   return (
     <div className="flex flex-col items-center justify-between h-[100svh] bg-slate-950 font-sans text-center text-white overflow-hidden py-[4vh] relative">
       
-      {/* HEADER: Título e Ícone Substituto */}
+      {/* HEADER: Apenas Texto */}
       <div className="flex flex-col items-center gap-[1.5vh] z-10">
-        <div className="flex items-center gap-3">
-          {/* Ícone de Ponte (SVG Customizado) em vez do Vercel */}
-          <svg className="w-8 h-8 text-white/40" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-            <path d="M3 21h18M3 7l9-4 9 4M5 21V7m14 14V7m-7 14V11" strokeLinecap="round" strokeLinejoin="round"/>
-          </svg>
-          <h1 className="text-white text-[4vh] font-black tracking-widest uppercase opacity-20 leading-none">Ponte Móvel</h1>
-        </div>
+        <h1 className="text-white text-[5vh] font-black tracking-widest uppercase opacity-20 leading-none">Ponte Móvel</h1>
         <div className="py-[0.8vh] px-[2vh] bg-zinc-900/50 rounded-full border border-zinc-800 min-w-[240px]">
           <span className="text-white text-[1.3vh] font-mono uppercase tracking-tighter">
             {cor === 'OFF' ? 'A ATUALIZAR...' : mensagem}
@@ -166,18 +172,24 @@ export default function App() {
       {abaAtiva === 'monitor' ? (
         <div className="flex flex-col items-center justify-center flex-grow mb-20">
           <div className="h-[46vh] aspect-[1/2.4] bg-zinc-900 p-[3vh] rounded-[8vh] shadow-2xl border-[0.6vh] border-zinc-800 flex flex-col justify-between ring-1 ring-white/5 relative">
-            <div className={`aspect-square w-full rounded-full transition-all duration-700 ${cor === 'VERMELHO' ? 'bg-red-600 shadow-[0_0_6vh_rgba(220,38,38,0.9)] scale-105' : 'bg-red-950/20'}`} />
-            <div className={`aspect-square w-full rounded-full transition-all duration-700 ${cor === 'AMARELO' ? 'bg-yellow-500 shadow-[0_0_6vh_rgba(234,179,8,0.9)] scale-105' : 'bg-yellow-950/20'}`} />
-            <div className={`aspect-square w-full rounded-full transition-all duration-700 ${cor === 'VERDE' ? 'bg-emerald-500 shadow-[0_0_6vh_rgba(16,185,129,0.9)] scale-105' : 'bg-emerald-950/20'}`} />
+            <div className={`aspect-square w-full rounded-full transition-all duration-1000 ease-in-out ${
+              cor === 'VERMELHO' ? 'bg-red-600 shadow-[0_0_6vh_rgba(220,38,38,0.9)] opacity-100 scale-105' : 'bg-red-950/20 opacity-30'
+            }`} />
+            <div className={`aspect-square w-full rounded-full transition-all duration-1000 ease-in-out ${
+              cor === 'AMARELO' ? 'bg-yellow-500 shadow-[0_0_6vh_rgba(234,179,8,0.9)] opacity-100 scale-105' : 'bg-yellow-950/20 opacity-30'
+            }`} />
+            <div className={`aspect-square w-full rounded-full transition-all duration-1000 ease-in-out ${
+              cor === 'VERDE' ? 'bg-emerald-500 shadow-[0_0_6vh_rgba(16,185,129,0.9)] opacity-100 scale-105' : 'bg-emerald-950/20 opacity-30'
+            }`} />
           </div>
-          <div className="mt-8 flex flex-col gap-1">
+          <div className="mt-8">
             <span className="text-[4vh] font-mono font-light tracking-widest leading-none">{tempoReal.toLocaleTimeString('pt-PT')}</span>
           </div>
         </div>
       ) : (
         <div className="w-full max-w-md px-4 flex-grow overflow-y-auto mb-28 mt-4 scrollbar-hide">
           <div className="bg-zinc-900/80 p-3 rounded-lg border border-zinc-800 flex justify-between items-center mb-4">
-            <span className="text-[9px] uppercase font-bold text-zinc-500 tracking-widest">Tempo Aberta Hoje:</span>
+            <span className="text-[9px] uppercase font-bold text-zinc-500 tracking-widest">Aberta Hoje:</span>
             <span className="text-red-500 font-mono font-bold text-sm">{tempoAbertoHoje}</span>
           </div>
           <div className="flex justify-between mb-4 gap-2">
@@ -193,7 +205,7 @@ export default function App() {
               const a = document.createElement('a'); a.href = url; a.download = 'historico_ponte.csv'; a.click();
             }} className="bg-emerald-600/20 text-emerald-400 border border-emerald-900/50 text-[9px] font-bold px-4 rounded uppercase">CSV</button>
           </div>
-          <div className="bg-zinc-900 rounded-xl border border-zinc-800 overflow-hidden">
+          <div className="bg-zinc-900 rounded-xl border border-zinc-800 overflow-hidden shadow-2xl">
             <table className="w-full text-left text-[11px]">
               <tbody className="divide-y divide-zinc-800/50">
                 {(filtro === 'TODOS' ? logs : logs.filter(l => l.estado === filtro)).map((log, i) => (
@@ -211,8 +223,8 @@ export default function App() {
 
       {/* NAVEGAÇÃO INFERIOR */}
       <nav className="flex gap-2 absolute bottom-6 z-20 bg-slate-950/90 backdrop-blur-md p-1.5 rounded-full border border-white/5 shadow-2xl">
-        <button onClick={() => setAbaAtiva('monitor')} className={`px-6 py-2 rounded-full text-[9px] font-bold uppercase transition-all ${abaAtiva === 'monitor' ? 'bg-white text-black' : 'bg-zinc-900 text-zinc-500 border border-zinc-800'}`}>Monitor</button>
-        <button onClick={() => setAbaAtiva('historico')} className={`px-6 py-2 rounded-full text-[9px] font-bold uppercase transition-all ${abaAtiva === 'historico' ? 'bg-white text-black' : 'bg-zinc-900 text-zinc-500 border border-zinc-800'}`}>Histórico</button>
+        <button onClick={() => setAbaAtiva('monitor')} className={`px-6 py-2 rounded-full text-[9px] font-bold uppercase transition-all ${abaAtiva === 'monitor' ? 'bg-white text-black shadow-lg scale-105' : 'bg-zinc-900 text-zinc-500'}`}>Monitor</button>
+        <button onClick={() => setAbaAtiva('historico')} className={`px-6 py-2 rounded-full text-[9px] font-bold uppercase transition-all ${abaAtiva === 'historico' ? 'bg-white text-black shadow-lg scale-105' : 'bg-zinc-900 text-zinc-500'}`}>Histórico</button>
       </nav>
 
     </div>

@@ -4,10 +4,11 @@ import react from '@vitejs/plugin-react'
 // https://vitejs.dev/config/
 export default defineConfig({
   plugins: [react()],
-  base: '/semaforo-ponte/', // Adicionado para que os caminhos funcionem no GitHub Pages
+  // FUNDAMENTAL: O nome do repositório no GitHub para os caminhos não quebrarem
+  base: '/semaforo-ponte/', 
   server: {
     proxy: {
-      // Quando o código pedir '/api-apdl', o Vite redireciona para o site real
+      // Este proxy funciona APENAS em desenvolvimento (npm run dev)
       '/api-apdl': {
         target: 'https://siga.apdl.pt/AberturaPonteMovel/',
         changeOrigin: true,

@@ -1,17 +1,12 @@
 import { useState, useEffect, useRef } from 'react';
 
-// Variáveis de ambiente configuradas no GitHub Secrets e no ficheiro .env
+// Variáveis de ambiente (WhatsApp)
 const WHATSAPP_PHONE = import.meta.env.VITE_WHATSAPP_PHONE;
 const WHATSAPP_API_KEY = import.meta.env.VITE_WHATSAPP_API_KEY;
 
-/**
- * App: Monitor de Semáforo da Ponte Móvel
- * Configurado para detetar automaticamente o ambiente (Local vs Produção)
- * Resolve erros de CORS via AllOrigins JSON Wrapper.
- */
 export default function App() {
   const [cor, setCor] = useState('OFF');
-  const [mensagem, setMensagem] = useState('A INICIAR SISTEMA...');
+  const [mensagem, setMensagem] = useState('A LIGAR AO SISTEMA...');
   const [tempoReal, setTempoReal] = useState(new Date());
   const [carregandoInicial, setCarregandoInicial] = useState(true);
   
@@ -19,23 +14,20 @@ export default function App() {
   const inicializadoRef = useRef(false);
   const isProd = import.meta.env.PROD;
 
-  // Lógica de URL: AllOrigins /get é mais estável para evitar bloqueios de CORS (null)
+  // Proxy AllOrigins: Encapsula o site da APDL num JSON para passar o CORS
   const API_URL = isProd 
     ? 'https://api.allorigins.win/get?url=' + encodeURIComponent('https://siga.apdl.pt/AberturaPonteMovel/')
     : '/api-apdl';
 
-  // Função de notificação via WhatsApp (CallMeBot)
   const enviarNotificacao = async (novaMensagem: string) => {
     if (!WHATSAPP_PHONE || !WHATSAPP_API_KEY) return;
     try {
       const textoFinal = encodeURIComponent(`🚨 *Monitor Ponte Móvel*: ${novaMensagem}`);
       const url = `https://api.callmebot.com/whatsapp.php?phone=${WHATSAPP_PHONE}&text=${textoFinal}&apikey=${WHATSAPP_API_KEY}`;
-      
-      // Modo no-cors para evitar que falhas no WhatsApp bloqueiem o semáforo
       await fetch(url, { mode: 'no-cors' }); 
-      console.log('Notificação enviada.');
+      console.log('Notificação enviada com sucesso.');
     } catch (e) {
-      console.error('Erro ao enviar mensagem para o WhatsApp');
+      console.error('Erro na notificação WhatsApp');
     }
   };
 
@@ -44,9 +36,8 @@ export default function App() {
       if (!inicializadoRef.current) setMensagem('A CONSULTAR APDL...');
       
       const controller = new AbortController();
-      const id = setTimeout(() => controller.abort(), 20000); // 20s de paciência para o proxy
+      const id = setTimeout(() => controller.abort(), 25000); // 25s de timeout (paciência extra para o proxy)
 
-      // Em produção, o AllOrigins devolve um JSON. Em local, o proxy do Vite devolve texto.
       const response = await fetch(`${API_URL}${isProd ? '' : '?t=' + Date.now()}`, { 
         cache: 'no-store',
         signal: controller.signal
@@ -54,12 +45,12 @@ export default function App() {
       
       clearTimeout(id);
 
-      if (!response.ok) throw new Error('Falha na resposta da rede');
+      if (!response.ok) throw new Error('Erro de rede');
       
       let textoHTML = "";
       if (isProd) {
         const json = await response.json();
-        textoHTML = json.contents; // O conteúdo real do site da APDL está aqui
+        textoHTML = json.contents; // Extrai o HTML de dentro do JSON do AllOrigins
       } else {
         textoHTML = await response.text();
       }
@@ -67,11 +58,9 @@ export default function App() {
       if (!textoHTML) throw new Error('Conteúdo vazio');
       
       const htmlNormalizado = textoHTML.toUpperCase();
-
       let novaCor = 'VERDE';
       let novaMensagem = 'PONTE FECHADA - TRÂNSITO LIVRE';
 
-      // Lógica de deteção baseada nas palavras-chave oficiais da APDL
       if (
         htmlNormalizado.includes('ABERTA') || 
         htmlNormalizado.includes('MOVIMENTO') || 
@@ -91,7 +80,7 @@ export default function App() {
         novaMensagem = 'PONTE EM PREPARAÇÃO';
       }
 
-      // Só envia notificação se a cor mudar e não for o primeiro carregamento
+      // Notifica se houver mudança de estado real
       if (inicializadoRef.current && corRef.current !== 'OFF' && novaCor !== corRef.current) {
         enviarNotificacao(novaMensagem);
       }
@@ -103,32 +92,28 @@ export default function App() {
       setCarregandoInicial(false);
 
     } catch (error) {
-      // Se falhar na primeira carga, mostra erro. Se já estava a funcionar, mantém a cor anterior.
       if (!inicializadoRef.current) {
-        setMensagem('REDE LENTA - A TENTAR NOVAMENTE...');
+        setMensagem('SISTEMA LENTO - A TENTAR...');
         setCor('OFF');
       }
-      console.error("Erro de sincronização com a ponte.");
+      console.log('Erro de consulta. A aguardar próximo ciclo.');
     }
   };
 
-  // Timer do relógio digital
   useEffect(() => {
     const timer = setInterval(() => setTempoReal(new Date()), 1000);
     return () => clearInterval(timer);
   }, []);
 
-  // Timer de consulta da API (20 segundos para evitar bloqueios de IP)
   useEffect(() => {
     verificarPonte();
-    const apiTimer = setInterval(verificarPonte, 20000);
+    const apiTimer = setInterval(verificarPonte, 20000); // Consulta a cada 20s
     return () => clearInterval(apiTimer);
   }, []);
 
   return (
     <div className="flex flex-col items-center justify-between h-[100svh] bg-slate-950 py-[5vh] font-sans px-4 text-center overflow-hidden">
       
-      {/* Cabeçalho */}
       <div className="flex flex-col items-center gap-[1.5vh]">
         <h1 className="text-white text-[5vh] font-black tracking-widest uppercase opacity-20 leading-none">
           Ponte Móvel
@@ -140,10 +125,8 @@ export default function App() {
         </div>
       </div>
       
-      {/* Estrutura do Semáforo */}
       <div className="h-[52vh] aspect-[1/2.4] bg-zinc-900 p-[3vh] rounded-[8vh] shadow-2xl border-[0.6vh] border-zinc-800 flex flex-col justify-between ring-1 ring-white/5 relative">
         
-        {/* Spinner de carregamento */}
         {carregandoInicial && (
            <div className="absolute inset-0 flex items-center justify-center bg-zinc-900/80 rounded-[8vh] z-10">
               <div className="w-8 h-8 border-4 border-zinc-700 border-t-white rounded-full animate-spin"></div>
@@ -163,7 +146,6 @@ export default function App() {
         }`} />
       </div>
 
-      {/* Relógio e Data */}
       <div className="flex flex-col items-center gap-[0.5vh] mb-[2vh]">
         <span className="text-white text-[4.5vh] font-mono font-light tracking-widest leading-none">
           {tempoReal.toLocaleTimeString('pt-PT')}

@@ -1,24 +1,29 @@
-name: Monitorização Automática 24/7
+name: Monitorização e Registo 24/7
 
 on:
   schedule:
-    # O GitHub executa no mínimo de 5 em 5 minutos por segurança
-    - cron: '*/5 * * * *' 
-  workflow_dispatch: # Permite-lhe correr o teste manualmente no separador Actions
+    - cron: '*/5 * * * *' # O GitHub limita a frequência, mas tentará o mais perto possível disto
+  workflow_dispatch:
+
+permissions:
+  contents: write # ESSENCIAL: Permite ao script gravar a "tabela" no seu GitHub
 
 jobs:
-  check-bridge:
+  check-and-log:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       
-      - name: Configurar Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: 20
-          
-      - name: Executar Verificação
+      - name: Executar Verificação e Registo
         env:
           VITE_WHATSAPP_PHONE: ${{ secrets.VITE_WHATSAPP_PHONE }}
           VITE_WHATSAPP_API_KEY: ${{ secrets.VITE_WHATSAPP_API_KEY }}
         run: node monitor_ponte.js
+        
+      - name: Guardar Alterações na Tabela
+        run: |
+          git config --global user.name "GitHub Action Bot"
+          git config --global user.email "actions@github.com"
+          git add historico_ponte.csv
+          git commit -m "Auto-registo: Atualização do histórico da ponte" || echo "Sem mudanças no estado."
+          git push

@@ -1,34 +1,42 @@
-// monitor_ponte.js
+const fs = require('fs');
 const PHONE = process.env.VITE_WHATSAPP_PHONE;
 const KEY = process.env.VITE_WHATSAPP_API_KEY;
 const URL_APDL = 'https://siga.apdl.pt/AberturaPonteMovel/';
+const LOG_FILE = 'historico_ponte.csv';
 
 async function verificar() {
-  if (!PHONE || !KEY) {
-    console.error("Erro: Variáveis de ambiente VITE_WHATSAPP_PHONE ou VITE_WHATSAPP_API_KEY não configuradas.");
-    return;
-  }
-
   try {
     const response = await fetch(URL_APDL);
     const textoHTML = (await response.text()).toUpperCase();
+    const agora = new Date().toLocaleString('pt-PT');
 
-    // Lógica de deteção (igual à do seu App.tsx)
-    const ponteAberta = textoHTML.includes('ABERTA') || 
-                        textoHTML.includes('MOVIMENTO') || 
-                        textoHTML.includes('MANOBRA');
+    let estado = 'FECHADA';
+    if (textoHTML.includes('ABERTA') || textoHTML.includes('MOVIMENTO') || textoHTML.includes('MANOBRA')) {
+      estado = 'ABERTA';
+    } else if (textoHTML.includes('PREPARA') || textoHTML.includes('AGUARDA')) {
+      estado = 'PREPARAÇÃO';
+    }
 
-    if (ponteAberta) {
-      console.log("Ponte aberta detetada! A enviar notificação...");
-      const msg = encodeURIComponent("🚨 *Aviso Automático*: A Ponte Móvel de Leça está ABERTA ou em movimento.");
-      const urlWa = `https://api.callmebot.com/whatsapp.php?phone=${PHONE}&text=${msg}&apikey=${KEY}`;
-      
-      await fetch(urlWa);
-    } else {
-      console.log("Ponte fechada. Sem necessidade de aviso.");
+    // 1. Ler o último estado registado para evitar notificações repetidas
+    let ultimoEstado = '';
+    if (fs.existsSync(LOG_FILE)) {
+      const linhas = fs.readFileSync(LOG_FILE, 'utf8').trim().split('\n');
+      ultimoEstado = linhas[linhas.length - 1].split(',')[1];
+    }
+
+    // 2. Se o estado mudou, regista na "tabela" e envia WhatsApp
+    if (estado !== ultimoEstado) {
+      const novaLinha = `${agora},${estado}\n`;
+      fs.appendFileSync(LOG_FILE, novaLinha);
+      console.log(`Estado mudou para ${estado}. Registo guardado.`);
+
+      if (estado === 'ABERTA' || estado === 'PREPARAÇÃO') {
+        const msg = encodeURIComponent(`🚨 *Ponte Móvel*: O estado mudou para ${estado} às ${agora}.`);
+        await fetch(`https://api.callmebot.com/whatsapp.php?phone=${PHONE}&text=${msg}&apikey=${KEY}`);
+      }
     }
   } catch (error) {
-    console.error("Erro ao consultar a APDL:", error);
+    console.error("Erro na monitorização:", error);
   }
 }
 

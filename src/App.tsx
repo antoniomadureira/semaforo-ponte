@@ -1,8 +1,5 @@
 import { useState, useEffect, useRef, useMemo } from 'react';
 
-const WHATSAPP_PHONE = import.meta.env.VITE_WHATSAPP_PHONE;
-const WHATSAPP_API_KEY = import.meta.env.VITE_WHATSAPP_API_KEY;
-
 interface LogEntrada {
   estado: string;
   data: string;
@@ -20,108 +17,64 @@ export default function App() {
   
   const corRef = useRef('OFF');
   const inicializadoRef = useRef(false);
-  const isProd = import.meta.env.PROD;
 
-  // CONFIGURAÇÃO DE TÍTULO E FAVICON (Resolve o problema do ícone)
+  // CONFIGURAÇÃO DE TÍTULO E FAVICON
   useEffect(() => {
     document.title = "Estado da Ponte";
     const link: HTMLLinkElement = document.querySelector("link[rel~='icon']") || document.createElement('link');
     link.rel = 'icon';
-    // Gera um ícone de ponte simples via SVG Data URL
     link.href = 'data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2280%22>🌉</text></svg>';
     document.getElementsByTagName('head')[0].appendChild(link);
   }, []);
 
-  // ESTRATÉGIA DE REDE: Uso de JSON wrapper para evitar erros de CORS do browser
-  const tentarFetch = async (urlBase: string) => {
-    const urlComTime = `${urlBase}?t=${Date.now()}`;
-    const configs = [
-      // 1. AllOrigins via /get (Retorna JSON, evita erro 500 de CORS raw)
-      { url: `https://api.allorigins.win/get?url=${encodeURIComponent(urlComTime)}`, type: 'json' },
-      // 2. CORSProxy.io (Alternativa direta)
-      { url: `https://corsproxy.io/?${encodeURIComponent(urlComTime)}`, type: 'text' },
-      // 3. CodeTabs (Sintaxe ultra-limpa para evitar Erro 400)
-      { url: `https://api.codetabs.com/v1/proxy?url=${encodeURIComponent(urlBase)}`, type: 'text' }
-    ];
+  const fetchHistorico = async () => {
+    try {
+      // Para GitHub Pages, lemos o ficheiro JSON diretamente do repositório
+      const response = await fetch('/historico_ponte.json?t=' + Date.now()); // Adiciona timestamp para evitar cache
+      if (response.ok) {
+        const data = await response.json();
+        const formattedLogs: LogEntrada[] = data.map((log: any) => ({
+          estado: log.estado,
+          data: new Date(log.timestamp).toLocaleDateString('pt-PT'),
+          hora: new Date(log.timestamp).toLocaleTimeString('pt-PT'),
+          timestamp: new Date(log.timestamp).getTime()
+        }));
+        setLogs(formattedLogs);
 
-    for (const config of configs) {
-      try {
-        const controller = new AbortController();
-        const timeout = setTimeout(() => controller.abort(), 8000);
-        const response = await fetch(config.url, { signal: controller.signal });
-        clearTimeout(timeout);
+        // Atualizar o estado atual da ponte com base no log mais recente
+        if (formattedLogs.length > 0) {
+          const ultimoLog = formattedLogs[0];
+          let novaCor = 'VERDE';
+          let msgFull = 'PONTE FECHADA - TRÂNSITO LIVRE';
 
-        if (response.ok) {
-          if (config.type === 'json') {
-            const data = await response.json();
-            if (data.contents && data.contents.length > 500) return data.contents;
-          } else {
-            const text = await response.text();
-            if (text && text.length > 500) return text;
+          if (ultimoLog.estado === 'ABERTA') {
+            novaCor = 'VERMELHO'; msgFull = 'PONTE ABERTA - TRÂNSITO PROIBIDO';
+          } else if (ultimoLog.estado === 'PREPARAÇÃO') {
+            novaCor = 'AMARELO'; msgFull = 'PONTE EM PREPARAÇÃO';
           }
+          setCor(novaCor);
+          setMensagem(msgFull);
+          corRef.current = novaCor;
+          inicializadoRef.current = true;
         }
-      } catch (e) { console.warn("Proxy falhou, a tentar próximo..."); }
+      }
+    } catch (error) {
+      console.error('Erro ao buscar histórico:', error);
+      setMensagem('ERRO AO CARREGAR DADOS');
+      setCor('OFF');
     }
-    return null;
   };
 
   useEffect(() => {
-    const salvos = localStorage.getItem('historico_ponte_local');
-    if (salvos) setLogs(JSON.parse(salvos));
+    fetchHistorico(); // Busca inicial
+    const intervalId = setInterval(fetchHistorico, 15000); // Atualiza a cada 15 segundos
+    return () => clearInterval(intervalId);
   }, []);
 
   useEffect(() => {
-    localStorage.setItem('historico_ponte_local', JSON.stringify(logs));
-  }, [logs]);
-
-  const enviarNotificacao = async (msg: string) => {
-    if (!WHATSAPP_PHONE || !WHATSAPP_API_KEY) return;
-    try {
-      const url = `https://api.callmebot.com/whatsapp.php?phone=${WHATSAPP_PHONE}&text=${encodeURIComponent('🚨 ' + msg)}&apikey=${WHATSAPP_API_KEY}`;
-      await fetch(url, { mode: 'no-cors' }); 
-    } catch (e) { console.error('Erro WhatsApp'); }
-  };
-
-  const verificarPonte = async () => {
-    const urlBase = 'https://siga.apdl.pt/AberturaPonteMovel/';
-    let html = isProd ? await tentarFetch(urlBase) : "";
-
-    if (!isProd) {
-      try {
-        const res = await fetch(`/api-apdl?t=${Date.now()}`);
-        html = await res.text();
-      } catch (e) { console.error("Erro local"); }
-    }
-
-    if (html) {
-      const htmlNormalizado = html.toUpperCase();
-      let novaCor = 'VERDE';
-      let label = 'FECHADA';
-      let msgFull = 'PONTE FECHADA - TRÂNSITO LIVRE';
-
-      if (htmlNormalizado.includes('ABERTA') || htmlNormalizado.includes('MOVIMENTO') || 
-          htmlNormalizado.includes('MANOBRA') || htmlNormalizado.includes('PROIBIDO')) {
-        novaCor = 'VERMELHO'; label = 'ABERTA'; msgFull = 'PONTE ABERTA - TRÂNSITO PROIBIDO';
-      } else if (htmlNormalizado.includes('PREPARA') || htmlNormalizado.includes('AVISO')) {
-        novaCor = 'AMARELO'; label = 'PREPARAÇÃO'; msgFull = 'PONTE EM PREPARAÇÃO';
-      }
-
-      if (corRef.current !== 'OFF' && novaCor !== corRef.current) {
-        const agora = new Date();
-        setLogs(prev => [{
-          estado: label,
-          data: agora.toLocaleDateString('pt-PT'),
-          hora: agora.toLocaleTimeString('pt-PT'),
-          timestamp: agora.getTime()
-        }, ...prev]);
-        enviarNotificacao(msgFull);
-      }
-      setCor(novaCor);
-      setMensagem(msgFull);
-      corRef.current = novaCor;
-      inicializadoRef.current = true;
-    }
-  };
+    const timer = setInterval(() => setTempoReal(new Date()), 1000);
+    return () => clearInterval(timer);
+  }, []);
 
   const tempoAbertoHoje = useMemo(() => {
     const hoje = new Date().toLocaleDateString('pt-PT');
@@ -144,17 +97,6 @@ export default function App() {
     const s = (segs % 60).toString().padStart(2, '0');
     return `${h}:${m}:${s}`;
   }, [logs, cor, tempoReal.getSeconds()]);
-
-  useEffect(() => {
-    const timer = setInterval(() => setTempoReal(new Date()), 1000);
-    return () => clearInterval(timer);
-  }, []);
-
-  useEffect(() => {
-    verificarPonte();
-    const apiTimer = setInterval(verificarPonte, 15000);
-    return () => clearInterval(apiTimer);
-  }, []);
 
   return (
     <div className="flex flex-col items-center justify-between h-[100svh] bg-slate-950 font-sans text-center text-white overflow-hidden py-[4vh] relative">

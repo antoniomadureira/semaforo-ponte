@@ -1,13 +1,33 @@
-<!doctype html>
-<html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-    <link rel="icon" type="image/svg+xml" href="/vite.svg" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>semaforo-ponte</title>
-  </head>
-  <body>
-    <div id="root"></div>
-    <script type="module" src="/src/main.tsx"></script>
-  </body>
+<!DOCTYPE html>
+<html lang="pt-PT">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Monitor - Ponte Móvel</title>
+    <link rel="stylesheet" href="css/style.css">
+    <link rel="icon" href="data:,">
+</head>
+<body>
+
+    <main class="app-container">
+        <h1 class="main-title">PONTE MÓVEL</h1>
+        
+        <div class="status-pill" id="texto-estado">A SINCRONIZAR...</div>
+        
+        <div class="traffic-light">
+            <div class="light" id="light-red"></div>
+            <div class="light" id="light-yellow"></div>
+            <div class="light" id="light-green"></div>
+        </div>
+        
+        <div class="time-display" id="timestamp-atual">--:--:--</div>
+        
+        <nav class="nav-pills">
+            <a href="index.html" class="nav-btn active">MONITOR</a>
+            <a href="historico.html" class="nav-btn">HISTÓRICO</a>
+        </nav>
+    </main>
+
+    <script type="module" src="js/app.js"></script>
+</body>
 </html>

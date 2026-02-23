@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="pt-PT">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Histórico - Ponte Móvel</title>
+    <link rel="stylesheet" href="css/style.css">
+    <link rel="icon" href="data:,">
+</head>
+<body>
+
+    <main class="app-container history-page">
+        <h1 class="main-title">PONTE MÓVEL</h1>
+        
+        <div class="status-pill" id="texto-estado-atual">A SINCRONIZAR...</div>
+        
+        <div class="stats-box">
+            <span class="stats-label">ABERTA HOJE:</span>
+            <span class="stats-value" id="tempo-aberta-hoje">00:00:00</span>
+        </div>
+
+        <div class="controls-row">
+            <select id="filtro-estado" class="dropdown-filter">
+                <option value="todos">TODOS OS REGISTOS</option>
+                <option value="ABERTA">ESTADO ABERTO</option>
+                <option value="FECHADA">ESTADO FECHADO</option>
+                <option value="EM PREPARAÇÃO">ESTADO EM PREPARAÇÃO</option>
+            </select>
+            <button id="btn-exportar" class="btn-csv">CSV</button>
+        </div>
+
+        <div class="list-header">
+            <div class="col-estado">ESTADO</div>
+            <div class="col-data">DATA</div>
+            <div class="col-hora">HORA</div>
+        </div>
+
+        <div class="records-list" id="lista-registos">
+            <div class="loading-text">A carregar histórico...</div>
+        </div>
+        
+        <nav class="nav-pills">
+            <a href="index.html" class="nav-btn">MONITOR</a>
+            <a href="historico.html" class="nav-btn active">HISTÓRICO</a>
+        </nav>
+    </main>
+
+    <script type="module" src="js/historico.js"></script>
+</body>
+</html>

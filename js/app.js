@@ -1,74 +1,92 @@
+/**
+ * MONITOR - PONTE MÓVEL MATOSINHOS
+ * Versão Estabilizada - CGIU
+ */
+
+// 1. INICIALIZAÇÃO IMEDIATA DO RELÓGIO (Não depende de nada)
+const iniciarRelogio = () => {
+    const display = document.getElementById('timestamp-atual');
+    const tick = () => {
+        if (display) {
+            const agora = new Date();
+            display.innerText = agora.toLocaleTimeString('pt-PT');
+        }
+    };
+    tick();
+    setInterval(tick, 1000);
+};
+iniciarRelogio();
+
+// 2. IMPORTAÇÕES (Pode falhar se o firebase.js estiver incorreto)
 import { db, collection, query, orderBy, limit, onSnapshot, addDoc, serverTimestamp } from './firebase.js';
 
 const textoEstado = document.getElementById('texto-estado');
-const luzVermelha = document.getElementById('light-red');
-const luzAmarela = document.getElementById('light-yellow');
-const luzVerde = document.getElementById('light-green');
+const luzes = {
+    RED: document.getElementById('light-red'),
+    YELLOW: document.getElementById('light-yellow'),
+    GREEN: document.getElementById('light-green')
+};
 
-let ultimoEstadoGravado = null;
-let baseDeDadosSincronizada = false;
+let ultimoEstado = null;
+let dbPronta = false;
 
-// 1. ATUALIZAÇÃO VISUAL (Sincronizada com Firebase)
+// 3. ESCUTA EM TEMPO REAL (FIREBASE)
 const q = query(collection(db, "registos_ponte"), orderBy("timestamp", "desc"), limit(1));
+
 onSnapshot(q, (snapshot) => {
-    baseDeDadosSincronizada = true;
+    dbPronta = true;
     if (snapshot.empty) return;
 
     snapshot.forEach((doc) => {
-        const dados = doc.data();
-        ultimoEstadoGravado = dados.estado;
+        const estado = doc.data().estado;
+        ultimoEstado = estado;
 
-        // Reset luzes
-        [luzVermelha, luzAmarela, luzVerde].forEach(l => l?.classList.remove('red-active', 'yellow-active', 'green-active'));
+        // Reset Visual
+        Object.values(luzes).forEach(l => l?.classList.remove('red-active', 'yellow-active', 'green-active'));
 
-        if (dados.estado === "ABERTA") {
+        if (estado === "ABERTA") {
             textoEstado.innerText = "PONTE ABERTA - TRÂNSITO CORTADO";
-            luzVermelha?.classList.add('red-active');
-        } else if (dados.estado === "FECHADA") {
+            luzes.RED?.classList.add('red-active');
+        } else if (estado === "FECHADA") {
             textoEstado.innerText = "PONTE FECHADA - TRÂNSITO LIVRE";
-            luzVerde?.classList.add('green-active');
-        } else if (dados.estado === "EM PREPARAÇÃO") {
+            luzes.GREEN?.classList.add('green-active');
+        } else if (estado === "EM PREPARAÇÃO") {
             textoEstado.innerText = "PONTE EM PREPARAÇÃO";
-            luzAmarela?.classList.add('yellow-active');
+            luzes.YELLOW?.classList.add('yellow-active');
         }
     });
-});
+}, (err) => console.error("Erro Firebase:", err));
 
-// 2. LEITURA DA APDL (Com Filtro de Incongruências)
+// 4. VERIFICAÇÃO APDL (Com tratamento de erro CORS/500)
 async function verificarAPDL() {
-    if (!baseDeDadosSincronizada) return;
+    if (!dbPronta) return;
 
     try {
-        const proxyUrl = `https://api.allorigins.win/get?url=${encodeURIComponent('https://siga.apdl.pt/AberturaPonteMovel/')}`;
-        const resposta = await fetch(proxyUrl);
-        const dadosJSON = await resposta.json();
-        const textoDaPagina = dadosJSON.contents.toLowerCase();
+        // Usamos um timestamp para evitar caches do proxy que causam o erro 500
+        const proxyUrl = `https://api.allorigins.win/get?url=${encodeURIComponent('https://siga.apdl.pt/AberturaPonteMovel/?t=' + Date.now())}`;
         
-        let estadoDetectado = "DESCONHECIDO";
+        const res = await fetch(proxyUrl);
+        if (!res.ok) throw new Error("Proxy instável");
 
-        // Lógica de tradução rigorosa
-        if (textoDaPagina.includes("em trânsito") || textoDaPagina.includes("transito")) {
-            estadoDetectado = "FECHADA";
-        } else if (textoDaPagina.includes("interrompido") || textoDaPagina.includes("manobra")) {
-            estadoDetectado = "ABERTA";
-        } else if (textoDaPagina.includes("preparação") || textoDaPagina.includes("preparacao")) {
-            estadoDetectado = "EM PREPARAÇÃO";
-        }
+        const data = await res.json();
+        const html = data.contents.toLowerCase();
+        let detectado = "DESCONHECIDO";
 
-        // SÓ GRAVA SE: Estado for conhecido E diferente do último E houver estabilidade
-        if (estadoDetectado !== "DESCONHECIDO" && estadoDetectado !== ultimoEstadoGravado) {
-            console.log(`📢 Mudança Real Detetada: ${estadoDetectado}`);
+        if (html.includes("em trânsito") || html.includes("transito")) detectado = "FECHADA";
+        else if (html.includes("interrompido") || html.includes("manobra")) detectado = "ABERTA";
+        else if (html.includes("preparação") || html.includes("preparacao")) detectado = "EM PREPARAÇÃO";
+
+        if (detectado !== "DESCONHECIDO" && detectado !== ultimoEstado) {
             await addDoc(collection(db, "registos_ponte"), {
-                estado: estadoDetectado,
+                estado: detectado,
                 timestamp: serverTimestamp(),
                 dataLocal: new Date().toLocaleString('pt-PT').replace(',', '')
             });
-            ultimoEstadoGravado = estadoDetectado;
         }
     } catch (e) {
-        console.error("Erro APDL:", e.message);
+        // Silencioso para não poluir a consola, o relógio continua a contar
+        console.warn("APDL inacessível temporariamente...");
     }
 }
 
-setInterval(verificarAPDL, 15000);
-setTimeout(verificarAPDL, 30000);
+setInterval(verificarAPDL, 20000); // 20 segundos para evitar bloqueios de IP
